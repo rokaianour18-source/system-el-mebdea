@@ -119,7 +119,7 @@ if not os.path.exists("payments.csv"):
 
 # دالة لقراءة جدول الطلاب بمرونة تامة
 def load_students_df():
-    df = pd.read_csv("students.csv")
+    students_df = pd.read_csv('students.csv', dtype=str)
     if "فئة الخصم" not in df.columns:
         df["فئة الخصم"] = "عادي (بدون خصم - 35 ج)"
     if "نظام الدفع" not in df.columns:
