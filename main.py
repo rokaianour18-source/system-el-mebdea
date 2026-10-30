@@ -7,7 +7,7 @@ from datetime import datetime
 # 1. إعدادات الصفحة
 st.set_page_config(page_title="سيستم تسجيل طلاب المبدع", page_icon="🎓", layout="wide")
 
-# 2. زرار تبديل المظهر العصري (شبه الصورة - شمس وقمر) في القائمة الجانبية
+# 2. زرار تبديل المظهر العصري (شمس وقمر) في القائمة الجانبية
 is_dark_mode = st.sidebar.toggle("🌙 الوضع الداكن (Dark Mode)", value=False)
 
 # تحديد الألوان بناءً على اختيار الزرار العصري
@@ -117,15 +117,15 @@ if not os.path.exists("grades.csv"):
 if not os.path.exists("payments.csv"):
     pd.DataFrame(columns=["كود الطالب", "التاريخ", "نوع الدفع", "المبلغ المدفوع", "رقم الحصة في الاشتراك", "ملاحظات"]).to_csv("payments.csv", index=False)
 
-# دالة لقراءة جدول الطلاب بمرونة تامة
+# دالة لقراءة جدول الطلاب بمرونة تامة ومنع أخطاء التعديل
 def load_students_df():
-    students_df = pd.read_csv('students.csv', dtype=str)
-    if "فئة الخصم" not in df.columns:
-        df["فئة الخصم"] = "عادي (بدون خصم - 35 ج)"
-    if "نظام الدفع" not in df.columns:
-        df["نظام الدفع"] = "بالحصة"
-    df.to_csv("students.csv", index=False)
-    return df
+    students_df = pd.read_csv("students.csv", dtype=str)
+    if "فئة الخصم" not in students_df.columns:
+        students_df["فئة الخصم"] = "عادي (بدون خصم - 35 ج)"
+    if "نظام الدفع" not in students_df.columns:
+        students_df["نظام الدفع"] = "بالحصة"
+    students_df.to_csv("students.csv", index=False)
+    return students_df
 
 # دالة لتحديد الكود التلقائي التالي
 def get_next_student_id():
@@ -168,7 +168,7 @@ def update_student_qr(student_id):
     total_paid = 0
     last_pay_text = "لا توجد مدفوعات مسجلة"
     if not s_payments.empty:
-        total_paid = s_payments["المبلغ المدفوع"].sum()
+        total_paid = s_payments["المبلغ المدفوع"].astype(float).sum()
         last_p = s_payments.iloc[-1]
         last_pay_text = f"أخر دفع: {last_p['المبلغ المدفوع']} ج ({last_p['نوع الدفع']}) بتاريخ {last_p['التاريخ']}"
         
@@ -295,7 +295,7 @@ elif choice == "تسجيل الحضور والدفع السريع":
                     date_str = str(date)
                     s_id_clean = search_id.strip()
                     
-                    grades_df = pd.read_csv("grades.csv")
+                    grades_df = pd.read_csv("grades.csv", dtype=str)
                     already_attended = not grades_df[(grades_df["كود الطالب"].astype(str) == s_id_clean) & (grades_df["التاريخ"] == date_str)].empty
                     
                     if already_attended:
@@ -312,7 +312,7 @@ elif choice == "تسجيل الحضور والدفع السريع":
                         grades_df.to_csv("grades.csv", index=False)
                         
                         if auto_pay and status == "حاضر":
-                            payments_df = pd.read_csv("payments.csv")
+                            payments_df = pd.read_csv("payments.csv", dtype=str)
                             new_pay = {
                                 "كود الطالب": s_id_clean,
                                 "التاريخ": date_str,
@@ -333,7 +333,7 @@ elif choice == "تسجيل الحضور والدفع السريع":
 elif choice == "إدارة المدفوعات والإيرادات اليومية":
     st.header("💰 ملخص الإيرادات والعمليات المالية اليومية")
 
-    payments_df = pd.read_csv("payments.csv")
+    payments_df = pd.read_csv("payments.csv", dtype=str)
     students_df = load_students_df()
 
     if payments_df.empty:
@@ -348,7 +348,7 @@ elif choice == "إدارة المدفوعات والإيرادات اليومي�
         if day_payments.empty:
             st.info("لا توجد تحصيلات مالية مسجلة في هذا التاريخ.")
         else:
-            total_day_revenue = day_payments["المبلغ المدفوع"].sum()
+            total_day_revenue = day_payments["المبلغ المدفوع"].astype(float).sum()
             st.metric(label="إجمالي إيرادات اليوم", value=f"{total_day_revenue} جنيه")
             
             merged_pay = day_payments.merge(students_df[["كود الطالب", "الاسم"]], on="كود الطالب", how="left")
@@ -422,8 +422,8 @@ elif choice == "عرض بيانات طالب (QR)":
     st.header("🔍 استعراض الملف الكامل للطالب والـ QR Code")
 
     students_df = load_students_df()
-    grades_df = pd.read_csv("grades.csv")
-    payments_df = pd.read_csv("payments.csv")
+    grades_df = pd.read_csv("grades.csv", dtype=str)
+    payments_df = pd.read_csv("payments.csv", dtype=str)
 
     if students_df.empty:
         st.info("لا يوجد طلاب مسجلين.")
