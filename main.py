@@ -96,7 +96,7 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# قائمة المراحل الدراسية (إعدادي + أولى ثانوي فقط)
+# قائمة المراحل الدراسية
 GRADES_LIST = [
     "الصف الأول الإعدادي",
     "الصف الثاني الإعدادي",
@@ -117,7 +117,7 @@ if not os.path.exists("grades.csv"):
 if not os.path.exists("payments.csv"):
     pd.DataFrame(columns=["كود الطالب", "التاريخ", "نوع الدفع", "المبلغ المدفوع", "رقم الحصة في الاشتراك", "ملاحظات"]).to_csv("payments.csv", index=False)
 
-# دالة لقراءة جدول الطلاب بمرونة تامة ومنع أخطاء التعديل
+# دالة لقراءة جدول الطلاب بمرونة تامة
 def load_students_df():
     students_df = pd.read_csv("students.csv", dtype=str)
     if "فئة الخصم" not in students_df.columns:
@@ -196,8 +196,10 @@ st.title("⭐ سيستم تسجيل طلاب المبدع")
 menu = [
     "تسجيل طالب جديد",
     "تسجيل الحضور والدفع السريع",
+    "تسجيل وتعديل درجات الواجب والامتحان",
     "إدارة المدفوعات والإيرادات اليومية",
     "جدول بيانات الطلاب الشامل",
+    "تعديل وتنظيف السجلات (مركز التحكم)",
     "تعديل بيانات طالب",
     "عرض بيانات طالب (QR)",
 ]
@@ -248,7 +250,7 @@ if choice == "تسجيل طالب جديد":
 
 # ----------------- 2. قسم تسجيل الحضور والدفع السريع -----------------
 elif choice == "تسجيل الحضور والدفع السريع":
-    st.header("⚡ تسجيل الحضور والدفع في خطوة واحدة")
+    st.header("⚡ تسجيل الحضور والدفع السريع (عند دخول الطالب)")
 
     students_df = load_students_df()
     if students_df.empty:
@@ -274,6 +276,12 @@ elif choice == "تسجيل الحضور والدفع السريع":
                     fixed_amount = 35
                 elif "30 ج" in discount_cat:
                     fixed_amount = 30
+                elif "140" in discount_cat:
+                    fixed_amount = 140
+                elif "120" in discount_cat:
+                    fixed_amount = 120
+                elif "100" in discount_cat:
+                    fixed_amount = 100
 
                 st.success(f"الطالب: **{student_name}** | المرحلة: **{student_grade}** | نظام الخصم: **{discount_cat}** (المبلغ الثابت: {fixed_amount} جنيه)")
 
@@ -281,33 +289,30 @@ elif choice == "تسجيل الحضور والدفع السريع":
                     date = st.date_input("تاريخ اليوم للحصة", value=datetime.today())
                     status = st.radio("حالة الحضور", ["حاضر", "غائب"])
                     
-                    add_grades = st.checkbox("إضافة درجات الواجب والامتحان (اختياري)")
-                    hw_score, ex_score = 0, 0
-                    if add_grades:
-                        hw_score = st.number_input("درجة الواجب", min_value=0, max_value=100, value=0)
-                        ex_score = st.number_input("درجة الامتحان", min_value=0, max_value=100, value=0)
-                        
                     auto_pay = st.checkbox("تسجيل دفع المصروفات مع الحصة تلقائياً (بالمبلغ الثابت)", value=True)
-                    notes = st.text_input("ملاحظات الحصة أو الدفع (اختياري)")
+                    notes = st.text_input("ملاحظات الدفع (اختياري)")
                     
-                    submit_quick = st.form_submit_button("إتمام وتسجيل الحصة")
+                    submit_quick = st.form_submit_button("إتمام وتسجيل الحضور")
 
                 if submit_quick:
                     date_str = str(date)
                     s_id_clean = search_id.strip()
                     
                     grades_df = pd.read_csv("grades.csv", dtype=str)
-                    already_attended = not grades_df[(grades_df["كود الطالب"].astype(str) == s_id_clean) & (grades_df["التاريخ"] == date_str)].empty
+                    existing_record = grades_df[(grades_df["كود الطالب"].astype(str) == s_id_clean) & (grades_df["التاريخ"] == date_str)]
                     
-                    if already_attended:
-                        st.warning(f"⚠️ تنبيه: الطالب {student_name} مسجل له حضور بالفعل في تاريخ اليوم ({date_str})!")
+                    if not existing_record.empty:
+                        idx = existing_record.index[0]
+                        grades_df.loc[idx, "الحالة"] = status
+                        grades_df.to_csv("grades.csv", index=False)
+                        st.warning(f"⚠️ الطالب {student_name} كان مسجل حضوره مسبقاً، وتم تحديث حالة الحضور لتاريخ ({date_str})!")
                     else:
                         new_grade = {
                             "كود الطالب": s_id_clean,
                             "التاريخ": date_str,
                             "الحالة": status,
-                            "درجة الواجب": hw_score,
-                            "درجة الامتحان": ex_score,
+                            "درجة الواجب": "0",
+                            "درجة الامتحان": "0",
                         }
                         grades_df = pd.concat([grades_df, pd.DataFrame([new_grade])], ignore_index=True)
                         grades_df.to_csv("grades.csv", index=False)
@@ -326,11 +331,72 @@ elif choice == "تسجيل الحضور والدفع السريع":
                             payments_df.to_csv("payments.csv", index=False)
                         
                         update_student_qr(s_id_clean)
-                        st.success(f"✨ تم تسجيل الحضور والدفع أوتوماتيكياً للطالب {student_name} بنجاح دون تكرار!")
+                        st.success(f"✨ تم تسجيل الحضور والدفع أوتوماتيكياً للطالب {student_name} بنجاح!")
             else:
                 st.error("عذراً، هذا الكود غير مسجل في السيستم.")
 
-# ----------------- 3. قسم إدارة المدفوعات والإيرادات اليومية -----------------
+# ----------------- 3. قسم تسجيل وتعديل درجات الواجب والامتحان -----------------
+elif choice == "تسجيل وتعديل درجات الواجب والامتحان":
+    st.header("📝 تسجيل وتعديل درجات الواجب والامتحان للطلاب")
+
+    students_df = load_students_df()
+    grades_df = pd.read_csv("grades.csv", dtype=str)
+
+    if students_df.empty:
+        st.info("لا يوجد طلاب مسجلين بعد.")
+    else:
+        score_id = st.text_input("أدخل كود الطالب لإضافة أو تعديل درجاته")
+
+        if score_id:
+            score_id_clean = score_id.strip()
+            student_match = students_df[students_df["كود الطالب"].astype(str) == score_id_clean]
+
+            if not student_match.empty:
+                s_info = student_match.iloc[0]
+                student_name = s_info["الاسم"]
+                
+                st.success(f"الطالب الحالي: **{student_name}** (كود: {score_id_clean})")
+
+                with st.form("score_update_form"):
+                    date_str_input = st.text_input("تاريخ الحصة المراد رصد درجاتها (مثال: YYYY-MM-DD)", value=str(datetime.today().date()))
+                    hw_val = st.number_input("درجة الواجب", min_value=0, max_value=100, value=0)
+                    ex_val = st.number_input("درجة الامتحان", min_value=0, max_value=100, value=0)
+                    
+                    submit_score = st.form_submit_button("حفظ ورصد الدرجات")
+
+                if submit_score:
+                    date_match_idx = grades_df[(grades_df["كود الطالب"].astype(str) == score_id_clean) & (grades_df["التاريخ"] == date_str_input)].index
+
+                    if not date_match_idx.empty:
+                        idx = date_match_idx[0]
+                        grades_df.loc[idx, "درجة الواجب"] = str(hw_val)
+                        grades_df.loc[idx, "درجة الامتحان"] = str(ex_val)
+                        grades_df.to_csv("grades.csv", index=False)
+                        update_student_qr(score_id_clean)
+                        st.success(f"✅ تم تحديث درجات الواجب والامتحان للطالب {student_name} في تاريخ {date_str_input} بنجاح!")
+                    else:
+                        new_grade_record = {
+                            "كود الطالب": score_id_clean,
+                            "التاريخ": date_str_input,
+                            "الحالة": "حاضر",
+                            "درجة الواجب": str(hw_val),
+                            "درجة الامتحان": str(ex_val),
+                        }
+                        grades_df = pd.concat([grades_df, pd.DataFrame([new_grade_record])], ignore_index=True)
+                        grades_df.to_csv("grades.csv", index=False)
+                        update_student_qr(score_id_clean)
+                        st.success(f"✨ تم تسجيل الحضور ورصد درجات الواجب والامتحان للطالب {student_name} بتاريخ {date_str_input} بنجاح!")
+                
+                st.subheader("📊 السجل الحالي لحضور ودرجات الطالب:")
+                current_s_grades = grades_df[grades_df["كود الطالب"].astype(str) == score_id_clean]
+                if current_s_grades.empty:
+                    st.info("لا توجد سجلات مسجلة لهذا الطالب حتى الآن.")
+                else:
+                    st.dataframe(current_s_grades, hide_index=True, use_container_width=True)
+            else:
+                st.error("عذراً، هذا الكود غير مسجل في السيستم.")
+
+# ----------------- 4. قسم إدارة المدفوعات والإيرادات اليومية -----------------
 elif choice == "إدارة المدفوعات والإيرادات اليومية":
     st.header("💰 ملخص الإيرادات والعمليات المالية اليومية")
 
@@ -359,7 +425,7 @@ elif choice == "إدارة المدفوعات والإيرادات اليومي�
         st.subheader("سجل جميع المدفوعات العامة للسنتر")
         st.dataframe(payments_df)
 
-# ----------------- 4. قسم جدول بيانات الطلاب الشامل -----------------
+# ----------------- 5. قسم جدول بيانات الطلاب الشامل -----------------
 elif choice == "جدول بيانات الطلاب الشامل":
     st.header("📋 جدول بيانات الطلاب مرتب حسب الصف الدراسي")
 
@@ -367,23 +433,17 @@ elif choice == "جدول بيانات الطلاب الشامل":
     if students_df.empty:
         st.info("لا توجد بيانات طلاب مسجلة حتى الآن.")
     else:
-        # ترتيب البيانات افتراضياً حسب المرحلة أو الصف الدراسي بشكل تصاعدي
-        df_sorted = students_df.sort_values(by="المرحلة", ascending=True)
-
-        # خيار إضافي لترتيب الجدول حسب رغبتك (الصف، الاسم، أو الكود)
         sort_choice = st.selectbox(
             "ترتيب الجدول حسب:", ["المرحلة", "الاسم", "كود الطالب"]
         )
         df_sorted = students_df.sort_values(by=sort_choice, ascending=True)
 
-        # عرض الجدول بشكل تفاعلي ومنظم يشبه الإكسيل بالكامل
         st.dataframe(
             df_sorted,
             use_container_width=True,
             hide_index=True,
         )
 
-        # زرار لتحميل الجدول كملف CSV / Excel جاهز
         csv_data = df_sorted.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             label="📥 تحميل جدول الطلاب كملف CSV/Excel",
@@ -392,7 +452,107 @@ elif choice == "جدول بيانات الطلاب الشامل":
             mime="text/csv",
         )
 
-# ----------------- 5. قسم تعديل بيانات طالب -----------------
+# ----------------- 6. قسم تعديل وتنظيف السجلات (مركز التحكم) -----------------
+elif choice == "تعديل وتنظيف السجلات (مركز التحكم)":
+    st.header("🛠️ مركز التحكم وإدارة البيانات الداخلي")
+
+    tab1, tab2, tab3 = st.tabs(["إدارة الحضور والدرجات", "إدارة السجل المالي", "حذف طالب من السيستم"])
+
+    # 1. التعديل والحذف في سجلات الحضور والدرجات
+    with tab1:
+        st.subheader("✏️ تعديل أو حذف سجل حضور/درجة معين")
+        grades_df = pd.read_csv("grades.csv", dtype=str)
+        students_df = load_students_df()
+
+        if grades_df.empty:
+            st.info("لا توجد سجلات حضور مسجلة.")
+        else:
+            merged_g = grades_df.merge(students_df[["كود الطالب", "الاسم"]], on="كود الطالب", how="left")
+            st.dataframe(merged_g, use_container_width=True)
+
+            del_id = st.text_input("أدخل كود الطالب لتعديل/حذف سطر من سجلاته", key="del_g_id")
+            if del_id:
+                s_records = grades_df[grades_df["كود الطالب"].astype(str) == del_id.strip()]
+                if not s_records.empty:
+                    dates_available = s_records["التاريخ"].tolist()
+                    selected_date_del = st.selectbox("اختر تاريخ الحصة المراد تعديلها أو حذفها", dates_available)
+
+                    col_edit, col_del = st.columns(2)
+                    with col_del:
+                        if st.button("🗑️ حذف هذا السجل نهائياً"):
+                            grades_df = grades_df.drop(grades_df[(grades_df["كود الطالب"].astype(str) == del_id.strip()) & (grades_df["التاريخ"] == selected_date_del)].index)
+                            grades_df.to_csv("grades.csv", index=False)
+                            update_student_qr(del_id.strip())
+                            st.success(f"تم حذف سجل تاريخ {selected_date_del} بنجاح!")
+                            st.rerun()
+                else:
+                    st.error("لم يتم العثور على سجلات حضور لهذا الكود.")
+
+    # 2. التعديل والحذف في سجلات المدفوعات
+    with tab2:
+        st.subheader("💰 تعديل أو حذف عملية دفع مسجلة بالخطأ")
+        payments_df = pd.read_csv("payments.csv", dtype=str)
+        students_df = load_students_df()
+
+        if payments_df.empty:
+            st.info("لا توجد عمليات دفع مسجلة.")
+        else:
+            merged_p = payments_df.merge(students_df[["كود الطالب", "الاسم"]], on="كود الطالب", how="left")
+            st.dataframe(merged_p, use_container_width=True)
+
+            pay_id = st.text_input("أدخل كود الطالب لتنظيف مدفوعاته", key="del_p_id")
+            if pay_id:
+                p_records = payments_df[payments_df["كود الطالب"].astype(str) == pay_id.strip()]
+                if not p_records.empty:
+                    p_dates = p_records["التاريخ"].tolist()
+                    selected_p_date = st.selectbox("اختر تاريخ العملية المالية المراد حذفها", p_dates)
+
+                    if st.button("🗑️ حذف عملية الدفع هذه"):
+                        payments_df = payments_df.drop(payments_df[(payments_df["كود الطالب"].astype(str) == pay_id.strip()) & (payments_df["التاريخ"] == selected_p_date)].index)
+                        payments_df.to_csv("payments.csv", index=False)
+                        update_student_qr(pay_id.strip())
+                        st.success(f"تم حذف عملية الدفع بتاريخ {selected_p_date} بنجاح!")
+                        st.rerun()
+                else:
+                    st.error("لا توجد مدفوعات مسجلة لهذا الكود.")
+
+    # 3. حذف طالب نهائياً من السيستم
+    with tab3:
+        st.subheader("⚠️ حذف طالب تماماً من السيستم")
+        students_df = load_students_df()
+
+        remove_id = st.text_input("أدخل كود الطالب المراد حذفه نهائياً", key="remove_s_id")
+        if remove_id:
+            match_s = students_df[students_df["كود الطالب"].astype(str) == remove_id.strip()]
+            if not match_s.empty:
+                s_name = match_s.iloc[0]["الاسم"]
+                st.warning(f"هل أنت تأكد من رغبتك في حذف الطالب: **{s_name}** بالكامل مع جميع سجلاته؟")
+
+                if st.button("🚨 تأكيد الحذف النهائي للطالب"):
+                    # 1. حذف من ملف الطلاب
+                    students_df = students_df[students_df["كود الطالب"].astype(str) != remove_id.strip()]
+                    students_df.to_csv("students.csv", index=False)
+
+                    # 2. حذف من ملف الدرجات والمدفوعات
+                    grades_df = pd.read_csv("grades.csv", dtype=str)
+                    grades_df = grades_df[grades_df["كود الطالب"].astype(str) != remove_id.strip()]
+                    grades_df.to_csv("grades.csv", index=False)
+
+                    payments_df = pd.read_csv("payments.csv", dtype=str)
+                    payments_df = payments_df[payments_df["كود الطالب"].astype(str) != remove_id.strip()]
+                    payments_df.to_csv("payments.csv", index=False)
+
+                    # 3. حذف صورة الـ QR
+                    qr_file = f"qr_codes/{remove_id.strip()}.png"
+                    if os.path.exists(qr_file):
+                        os.remove(qr_file)
+
+                    st.success(f"تم حذف الطالب {s_name} وجميع ملفاته المسجلة بنجاح!")
+                    st.rerun()
+            else:
+                st.error("لم يتم العثور على طالب بهذا الكود.")
+
+# ----------------- 7. قسم تعديل بيانات طالب -----------------
 elif choice == "تعديل بيانات طالب":
     st.header("⚙️ تعديل البيانات الأساسية وفئات الخصم للطالب")
 
@@ -423,7 +583,10 @@ elif choice == "تعديل بيانات طالب":
                     "يتيم / المميزين (يدفع 20 ج)",
                     "معفي تماماً (0 ج)",
                     "أخوات - توأم (مبلغ ثابت 35 ج)",
-                    "أخوات - مراحل مختلفة (مبلغ ثابت 30 ج)"
+                    "أخوات - مراحل مختلفة (مبلغ ثابت 30 ج)",
+                    "دفع الشهر (مبلغ ثابت 140)",
+                    "دفع الشهر بخصم (مبلغ ثابت 120)",
+                    "دفع الشهر بخصم خاص (مبلغ ثابت 100)"
                 ]
                 cur_disc = current_data.get("فئة الخصم", "عادي (بدون خصم - 35 ج)")
                 disc_idx = discount_list.index(cur_disc) if cur_disc in discount_list else 0
@@ -451,7 +614,7 @@ elif choice == "تعديل بيانات طالب":
             else:
                 st.error("لم يتم العثور على طالب بهذا الكود.")
 
-# ----------------- 6. قسم عرض البيانات والـ QR -----------------
+# ----------------- 8. قسم عرض البيانات والـ QR -----------------
 elif choice == "عرض بيانات طالب (QR)":
     st.header("🔍 استعراض الملف الكامل للطالب والـ QR Code")
 
